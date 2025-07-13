@@ -23,15 +23,16 @@
 
 ## 🏗️ 架构图
 
+
 ```mermaid
 graph TB
     A[Internet Users] --> B{WAF IP Whitelist}
-    B -->|✅ Allowed IP| C[CloudFront Distribution]
-    B -->|❌ Blocked IP| D[403 Forbidden]
-    C --> E[Lambda@Edge<br/>Origin Request]
+    B -->|Allowed IP| C[CloudFront Distribution]
+    B -->|Blocked IP| D[403 Forbidden]
+    C --> E[Lambda at Edge Origin Request]
     E --> F{Request Type}
-    F -->|Directory Access| G[302 Redirect<br/>to index.html]
-    F -->|404 Error| H[302 Redirect<br/>to App Index]
+    F -->|Directory Access| G[302 Redirect to index.html]
+    F -->|404 Error| H[302 Redirect to App Index]
     F -->|Normal Request| I[S3 Origin]
     I --> J[Static Content]
     
@@ -40,6 +41,7 @@ graph TB
     style E fill:#45b7d1
     style I fill:#96ceb4
 ```
+
 
 ## 🚀 快速开始
 
