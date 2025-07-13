@@ -1,0 +1,26 @@
+[
+  {
+    "ParameterKey": "S3BucketDomainName",
+    "ParameterValue": "your-bucket-name.s3.your-region.amazonaws.com"
+  },
+  {
+    "ParameterKey": "OriginAccessIdentityId",
+    "ParameterValue": "E1K3Y1A1IBH4GU"
+  },
+  {
+    "ParameterKey": "AllowedIPv4Addresses",
+    "ParameterValue": "123.168.103.254/32,43.206.231.189/32"
+  },
+  {
+    "ParameterKey": "AllowedIPv6Addresses",
+    "ParameterValue": "2406:da14:f53:7000:3fd2:2195:f979:585c/128"
+  },
+  {
+    "ParameterKey": "DistributionComment",
+    "ParameterValue": "CloudFront Distribution with WAF IP Whitelist Protection - Deployed via CloudFormation"
+  },
+  {
+    "ParameterKey": "PriceClass",
+    "ParameterValue": "PriceClass_All"
+  }
+]

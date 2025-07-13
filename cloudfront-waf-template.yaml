@@ -1,0 +1,374 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront Distribution with WAF IP Whitelist Protection and Lambda@Edge 404 Redirect'
+
+Parameters:
+  S3BucketDomainName:
+    Type: String
+    Description: 'S3 bucket domain name for CloudFront origin'
+    Default: 'your-bucket-name.s3.your-region.amazonaws.com'
+    
+  OriginAccessIdentityId:
+    Type: String
+    Description: 'CloudFront Origin Access Identity ID (without origin-access-identity/cloudfront/ prefix)'
+    Default: 'E1K3Y1A1IBH4GU'
+    
+  AllowedIPv4Addresses:
+    Type: CommaDelimitedList
+    Description: 'Comma-separated list of IPv4 addresses to allow (CIDR format, e.g., 1.2.3.4/32)'
+    Default: '127.0.0.1/32'
+    
+  AllowedIPv6Addresses:
+    Type: CommaDelimitedList
+    Description: 'Comma-separated list of IPv6 addresses to allow (CIDR format, e.g., 2001:db8::/128)'
+    Default: '::1/128'
+    
+  DistributionComment:
+    Type: String
+    Description: 'Comment for the CloudFront distribution'
+    Default: 'CloudFront Distribution with WAF IP Whitelist Protection'
+    
+  PriceClass:
+    Type: String
+    Description: 'CloudFront price class'
+    Default: 'PriceClass_All'
+    AllowedValues:
+      - 'PriceClass_100'
+      - 'PriceClass_200'
+      - 'PriceClass_All'
+
+Resources:
+  # Lambda@Edge Execution Role
+  LambdaEdgeExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-lambda-edge-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CloudWatchLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  # Lambda@Edge Function for 404 Redirect
+  LambdaEdgeFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-404-redirect'
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Role: !GetAtt LambdaEdgeExecutionRole.Arn
+      Timeout: 5
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          'use strict';
+
+          exports.handler = (event, context, callback) => {
+              console.log('Lambda@Edge Origin Request function started');
+              console.log('Event:', JSON.stringify(event, null, 2));
+              
+              try {
+                  const request = event.Records[0].cf.request;
+                  
+                  console.log('Processing request:', {
+                      uri: request.uri,
+                      method: request.method
+                  });
+                  
+                  // 处理子目录访问 - 直接重定向，不需要等待S3响应
+                  if (request.uri === '/website1/' || request.uri === '/website1') {
+                      console.log('Redirecting /website1/ to /website1/index.html');
+                      const redirectResponse = {
+                          status: '302',
+                          statusDescription: 'Found',
+                          headers: {
+                              location: [{
+                                  key: 'Location',
+                                  value: '/website1/index.html'
+                              }],
+                              'cache-control': [{
+                                  key: 'Cache-Control',
+                                  value: 'no-cache'
+                              }]
+                          }
+                      };
+                      callback(null, redirectResponse);
+                      return;
+                  }
+                  
+                  if (request.uri === '/website2/' || request.uri === '/website2') {
+                      console.log('Redirecting /website2/ to /website2/index.html');
+                      const redirectResponse = {
+                          status: '302',
+                          statusDescription: 'Found',
+                          headers: {
+                              location: [{
+                                  key: 'Location',
+                                  value: '/website2/index.html'
+                              }],
+                              'cache-control': [{
+                                  key: 'Cache-Control',
+                                  value: 'no-cache'
+                              }]
+                          }
+                      };
+                      callback(null, redirectResponse);
+                      return;
+                  }
+                  
+                  if (request.uri === '/app1/' || request.uri === '/app1') {
+                      console.log('Redirecting /app1/ to /app1/index.html');
+                      const redirectResponse = {
+                          status: '302',
+                          statusDescription: 'Found',
+                          headers: {
+                              location: [{
+                                  key: 'Location',
+                                  value: '/app1/index.html'
+                              }],
+                              'cache-control': [{
+                                  key: 'Cache-Control',
+                                  value: 'no-cache'
+                              }]
+                          }
+                      };
+                      callback(null, redirectResponse);
+                      return;
+                  }
+                  
+                  // 处理404重定向 - 检查路径模式
+                  if (request.uri.startsWith('/website1/') && !request.uri.endsWith('.html') && !request.uri.endsWith('.css') && !request.uri.endsWith('.js')) {
+                      console.log('Redirecting website1 404 to /website1/index.html');
+                      const redirectResponse = {
+                          status: '302',
+                          statusDescription: 'Found',
+                          headers: {
+                              location: [{
+                                  key: 'Location',
+                                  value: '/website1/index.html'
+                              }],
+                              'cache-control': [{
+                                  key: 'Cache-Control',
+                                  value: 'no-cache'
+                              }]
+                          }
+                      };
+                      callback(null, redirectResponse);
+                      return;
+                  }
+                  
+                  if (request.uri.startsWith('/website2/') && !request.uri.endsWith('.html') && !request.uri.endsWith('.css') && !request.uri.endsWith('.js')) {
+                      console.log('Redirecting website2 404 to /website2/index.html');
+                      const redirectResponse = {
+                          status: '302',
+                          statusDescription: 'Found',
+                          headers: {
+                              location: [{
+                                  key: 'Location',
+                                  value: '/website2/index.html'
+                              }],
+                              'cache-control': [{
+                                  key: 'Cache-Control',
+                                  value: 'no-cache'
+                              }]
+                          }
+                      };
+                      callback(null, redirectResponse);
+                      return;
+                  }
+                  
+                  if (request.uri.startsWith('/app1/') && !request.uri.endsWith('.html') && !request.uri.endsWith('.css') && !request.uri.endsWith('.js')) {
+                      console.log('Redirecting app1 404 to /app1/index.html');
+                      const redirectResponse = {
+                          status: '302',
+                          statusDescription: 'Found',
+                          headers: {
+                              location: [{
+                                  key: 'Location',
+                                  value: '/app1/index.html'
+                              }],
+                              'cache-control': [{
+                                  key: 'Cache-Control',
+                                  value: 'no-cache'
+                              }]
+                          }
+                      };
+                      callback(null, redirectResponse);
+                      return;
+                  }
+                  
+                  // 继续正常请求
+                  console.log('No redirect needed, continuing with original request');
+                  callback(null, request);
+                  
+              } catch (error) {
+                  console.error('Error in Lambda@Edge function:', error);
+                  // 继续原始请求而不是返回错误
+                  callback(null, event.Records[0].cf.request);
+              }
+          };
+
+  # Lambda@Edge Function Version
+  LambdaEdgeFunctionVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref LambdaEdgeFunction
+      Description: 'Version for Lambda@Edge deployment'
+
+  # WAF IPv4 IP Set
+  WAFIPv4Set:
+    Type: AWS::WAFv2::IPSet
+    Properties:
+      Name: !Sub '${AWS::StackName}-ipv4-whitelist'
+      Description: 'IPv4 addresses allowed to access CloudFront'
+      Scope: CLOUDFRONT
+      IPAddressVersion: IPV4
+      Addresses: !Ref AllowedIPv4Addresses
+
+  # WAF IPv6 IP Set
+  WAFIPv6Set:
+    Type: AWS::WAFv2::IPSet
+    Properties:
+      Name: !Sub '${AWS::StackName}-ipv6-whitelist'
+      Description: 'IPv6 addresses allowed to access CloudFront'
+      Scope: CLOUDFRONT
+      IPAddressVersion: IPV6
+      Addresses: !Ref AllowedIPv6Addresses
+
+  # WAF Web ACL
+  WAFWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${AWS::StackName}-waf-acl'
+      Description: 'WAF Web ACL for CloudFront IP whitelist protection'
+      Scope: CLOUDFRONT
+      DefaultAction:
+        Block: {}
+      Rules:
+        - Name: AllowIPv4Whitelist
+          Priority: 1
+          Statement:
+            IPSetReferenceStatement:
+              Arn: !GetAtt WAFIPv4Set.Arn
+          Action:
+            Allow: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AllowIPv4WhitelistRule
+        - Name: AllowIPv6Whitelist
+          Priority: 2
+          Statement:
+            IPSetReferenceStatement:
+              Arn: !GetAtt WAFIPv6Set.Arn
+          Action:
+            Allow: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AllowIPv6WhitelistRule
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${AWS::StackName}-WAF-Metrics'
+
+  # CloudFront Distribution
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Ref DistributionComment
+        DefaultRootObject: index.html
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        PriceClass: !Ref PriceClass
+        WebACLId: !GetAtt WAFWebACL.Arn
+        Origins:
+          - Id: S3Origin
+            DomainName: !Ref S3BucketDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${OriginAccessIdentityId}'
+            ConnectionAttempts: 3
+            ConnectionTimeout: 10
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - HEAD
+            - GET
+          CachedMethods:
+            - HEAD
+            - GET
+          Compress: false
+          SmoothStreaming: false
+          LambdaFunctionAssociations:
+            - EventType: origin-request
+              LambdaFunctionARN: !Ref LambdaEdgeFunctionVersion
+              IncludeBody: false
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          MinTTL: 0
+          DefaultTTL: 86400
+          MaxTTL: 31536000
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+          MinimumProtocolVersion: TLSv1
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: none
+
+Outputs:
+  CloudFrontDistributionId:
+    Description: 'CloudFront Distribution ID'
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub '${AWS::StackName}-DistributionId'
+
+  CloudFrontDistributionDomainName:
+    Description: 'CloudFront Distribution Domain Name'
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Export:
+      Name: !Sub '${AWS::StackName}-DomainName'
+
+  WAFWebACLArn:
+    Description: 'WAF Web ACL ARN'
+    Value: !GetAtt WAFWebACL.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-WAFArn'
+
+  LambdaEdgeFunctionArn:
+    Description: 'Lambda@Edge Function ARN with Version'
+    Value: !Ref LambdaEdgeFunctionVersion
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaEdgeArn'
+
+  IPv4IPSetArn:
+    Description: 'WAF IPv4 IP Set ARN'
+    Value: !GetAtt WAFIPv4Set.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-IPv4IPSetArn'
+
+  IPv6IPSetArn:
+    Description: 'WAF IPv6 IP Set ARN'
+    Value: !GetAtt WAFIPv6Set.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-IPv6IPSetArn'
